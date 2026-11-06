@@ -29,7 +29,17 @@ export interface ServerSessionConfig {
   transientIdleSeconds: number;
 }
 
-const DEFAULT_SCOPES = 'openid email profile offline_access mail contacts calendars files';
+// The JMAP scopes by their registered URNs (RFC 9661 and drafts): a provider
+// that doesn't know a short name like "mail" drops it silently, and the token
+// then reaches no mail at all.
+const DEFAULT_SCOPES = [
+  'openid',
+  'offline_access',
+  'urn:ietf:params:oauth:scope:mail',
+  'urn:ietf:params:oauth:scope:contacts',
+  'urn:ietf:params:oauth:scope:calendars',
+  'urn:ietf:params:oauth:scope:files',
+].join(' ');
 
 function seconds(name: string, fallback: number): number {
   const raw = process.env[name];
