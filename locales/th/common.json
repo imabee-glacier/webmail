@@ -157,10 +157,14 @@
   "login": {
     "server_signin": {
       "title": "Sign in - {app}",
-      "redirecting_title": "Taking you to sign in",
+      "redirecting_title": "Opening sign-in…",
       "redirecting_body": "You'll sign in with your passkey on your mail server's secure page.",
-      "continue": "Continue to sign in",
+      "continue": "Sign in",
       "other_account": "Use another account",
+      "welcome_title": "Sign in to {app}",
+      "welcome_body": "Use your passkey or password to open your mailbox.",
+      "session_ended_title": "Your session ended",
+      "session_ended_body": "For your security you were signed out of {app}. Sign in again to pick up where you left off.",
       "signed_out_title": "You're signed out",
       "signed_out_body": "Sign in again to get back to {app}.",
       "error_cancelled_title": "Sign-in was cancelled",

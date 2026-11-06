@@ -1107,8 +1107,6 @@ export function redirectToLogin(): void {
  * and the answer survives reloads, new tabs and restarts alike. There is no
  * token here to refresh, cache or lose.
  */
-const SESSION_REDIRECT_AT_KEY = 'server_session_redirect_at';
-
 /** Off to the provider's sign-in, back to `returnTo` afterwards. */
 export function startServerSignIn(options: { returnTo?: string; prompt?: 'login'; persistent?: boolean } = {}): void {
   if (typeof window === 'undefined') return;
@@ -1133,25 +1131,13 @@ export function startServerSignIn(options: { returnTo?: string; prompt?: 'login'
 
 /**
  * The server says the sign-in is over (revoked, expired, signed out elsewhere).
- * Like any first-party mail app: straight back through sign-in, which usually
- * needs no input while the provider still knows the user. Twice within a
- * minute is a loop, not an expiry: then the login page explains instead.
+ * The page says so and waits: leaving for another site is the person's call,
+ * never something the app does behind their back.
  */
 function serverSessionEnded(): void {
   if (typeof window === 'undefined' || leavingForProviderLogout) return;
-  let last = 0;
-  try {
-    last = Number(sessionStorage.getItem(SESSION_REDIRECT_AT_KEY) ?? '0');
-    sessionStorage.setItem(SESSION_REDIRECT_AT_KEY, String(Date.now()));
-  } catch {
-    /* noop */
-  }
-  if (Date.now() - last < 60_000) {
-    markSessionExpired();
-    navigateToLogin();
-    return;
-  }
-  startServerSignIn();
+  markSessionExpired();
+  navigateToLogin();
 }
 
 async function restoreServerSession(
@@ -1217,12 +1203,6 @@ async function restoreServerSession(
     set({ ...unauthenticated, error: 'connection_failed' });
     return;
   }
-  try {
-    sessionStorage.removeItem(SESSION_REDIRECT_AT_KEY);
-  } catch {
-    /* noop */
-  }
-
   holdClient(accountId, client);
   accountStore.setActiveAccount(accountId);
   accountStore.updateAccount(accountId, { isConnected: true, hasError: false });
@@ -1317,6 +1297,17 @@ function markSessionExpired(): void {
   }
 
   saveRedirectAfterLogin();
+}
+
+/** True once after a session ended under the person; the server sign-in page says so. */
+export function consumeSessionExpired(): boolean {
+  try {
+    const expired = sessionStorage.getItem('session_expired') === 'true';
+    sessionStorage.removeItem('session_expired');
+    return expired;
+  } catch {
+    return false;
+  }
 }
 
 const SIGNED_OUT_KEY = 'signed_out';
