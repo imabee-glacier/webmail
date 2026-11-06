@@ -15,7 +15,7 @@ import { fetchConfig, getCachedConfig } from '@/hooks/use-config';
 import { debug } from '@/lib/debug';
 import { setServerAuthIssue } from '@/lib/server-auth-status';
 import { generateAccountId, MAX_ACCOUNT_SLOTS } from '@/lib/account-utils';
-import { replaceWindowLocation, getPathPrefix, getLocaleFromPath, apiFetch } from '@/lib/browser-navigation';
+import { replaceWindowLocation, getPathPrefix, getLocaleFromPath, apiFetch, withBasePath } from '@/lib/browser-navigation';
 import { IS_DESKTOP_BUILD } from '@/lib/desktop/flag';
 import { getDesktopBridge } from '@/lib/desktop/bridge';
 import { clearDesktopCertificateChoices, clearDesktopCrashFiles, clearKeystoreGrants, noteDesktopCertificateAccount } from '@/lib/desktop/keystore-grants';
@@ -80,7 +80,7 @@ interface AuthState {
   client: IJMAPClient | null;
   identities: Identity[];
   primaryIdentity: Identity | null;
-  authMode: 'basic' | 'oauth' | 'token';
+  authMode: 'basic' | 'oauth' | 'token' | 'session';
   rememberMe: boolean;
   accessToken: string | null;
   tokenExpiresAt: number | null;
@@ -1099,6 +1099,171 @@ export function canEnterLoginInPlace(): boolean {
 export function redirectToLogin(): void {
   if (typeof window === 'undefined' || leavingForProviderLogout) return;
   navigateToLogin();
+}
+
+/**
+ * Server-held sign-in (lib/server-session). The session lives on the server
+ * behind an httpOnly cookie, so start-up is one question - who is signed in? -
+ * and the answer survives reloads, new tabs and restarts alike. There is no
+ * token here to refresh, cache or lose.
+ */
+const SESSION_REDIRECT_AT_KEY = 'server_session_redirect_at';
+
+/** Off to the provider's sign-in, back to `returnTo` afterwards. */
+export function startServerSignIn(options: { returnTo?: string; prompt?: 'login'; persistent?: boolean } = {}): void {
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams();
+  // The server adds the mount prefix itself; a path that already carries it would get it twice.
+  const prefix = getPathPrefix();
+  const unprefixed = (path: string) => (prefix && path.startsWith(prefix) ? path.slice(prefix.length) || '/' : path);
+  let saved: string | null = null;
+  try {
+    saved = sessionStorage.getItem('redirect_after_login');
+    sessionStorage.removeItem('redirect_after_login');
+  } catch {
+    /* noop */
+  }
+  const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const fallback = saved ?? (window.location.pathname.includes('/login') ? '/' : here);
+  params.set('returnTo', unprefixed(options.returnTo ?? fallback));
+  if (options.prompt) params.set('prompt', options.prompt);
+  if (options.persistent === false) params.set('persistent', '0');
+  window.location.assign(withBasePath(`/api/session/signin?${params.toString()}`));
+}
+
+/**
+ * The server says the sign-in is over (revoked, expired, signed out elsewhere).
+ * Like any first-party mail app: straight back through sign-in, which usually
+ * needs no input while the provider still knows the user. Twice within a
+ * minute is a loop, not an expiry: then the login page explains instead.
+ */
+function serverSessionEnded(): void {
+  if (typeof window === 'undefined' || leavingForProviderLogout) return;
+  let last = 0;
+  try {
+    last = Number(sessionStorage.getItem(SESSION_REDIRECT_AT_KEY) ?? '0');
+    sessionStorage.setItem(SESSION_REDIRECT_AT_KEY, String(Date.now()));
+  } catch {
+    /* noop */
+  }
+  if (Date.now() - last < 60_000) {
+    markSessionExpired();
+    navigateToLogin();
+    return;
+  }
+  startServerSignIn();
+}
+
+async function restoreServerSession(
+  set: (state: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<void> {
+  set({ isLoading: true, client: null });
+  const unauthenticated = { isLoading: false, isAuthenticated: false, client: null, activeAccountId: null } as const;
+  let response: Response;
+  try {
+    response = await apiFetch('/api/session', { cache: 'no-store' });
+  } catch {
+    set({ ...unauthenticated, error: 'connection_failed' });
+    return;
+  }
+  if (response.status === 401) {
+    saveRedirectAfterLogin();
+    set(unauthenticated);
+    return;
+  }
+  if (!response.ok) {
+    set({ ...unauthenticated, error: 'connection_failed' });
+    return;
+  }
+  const { user } = (await response.json()) as { user: { username: string; name: string } };
+
+  // This browser has exactly one sign-in: the session's. Entries left from
+  // anything else (an earlier sign-in, another mode) are not part of it.
+  const accountStore = useAccountStore.getState();
+  const existing = accountStore.accounts.find((a) => a.authMode === 'session' && a.username === user.username);
+  for (const other of accountStore.accounts) {
+    if (other.id !== existing?.id) {
+      evictAccount(other.id);
+      accountStore.removeAccount(other.id, 'evicted');
+    }
+  }
+
+  const serverUrl = `${window.location.origin}${withBasePath('/api/mail')}`;
+  const displayName = user.name || user.username;
+  const accountId = existing?.id ?? accountStore.addAccount({
+    label: displayName,
+    serverUrl,
+    username: user.username,
+    authMode: 'session',
+    rememberMe: true,
+    displayName,
+    email: user.username,
+    lastLoginAt: Date.now(),
+    isConnected: false,
+    hasError: false,
+    isDefault: true,
+  });
+  if (existing && existing.serverUrl !== serverUrl) accountStore.updateAccount(accountId, { serverUrl });
+
+  const client = JMAPClient.withServerSession(serverUrl, user.username, serverSessionEnded);
+  bindClientStatusHandlers(client, set, get, accountId);
+  try {
+    await client.connect();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Session ended') return; // serverSessionEnded navigates
+    debug.error('Server session: connect failed', error);
+    accountStore.updateAccount(accountId, { isConnected: false, hasError: true, errorMessage: 'Server unreachable' });
+    set({ ...unauthenticated, error: 'connection_failed' });
+    return;
+  }
+  try {
+    sessionStorage.removeItem(SESSION_REDIRECT_AT_KEY);
+  } catch {
+    /* noop */
+  }
+
+  holdClient(accountId, client);
+  accountStore.setActiveAccount(accountId);
+  accountStore.updateAccount(accountId, { isConnected: true, hasError: false });
+  initializeFeatureStores(client);
+  set({
+    isAuthenticated: true,
+    isLoading: false,
+    serverUrl,
+    username: user.username,
+    client,
+    ...getClientRateLimitState(client),
+    authMode: 'session',
+    rememberMe: true,
+    accessToken: null,
+    tokenExpiresAt: null,
+    connectionLost: false,
+    error: null,
+    activeAccountId: accountId,
+  });
+  void client.getIdentities()
+    .then((raw) => {
+      if (get().client !== client) return;
+      const { identities, primaryIdentity } = loadIdentities(raw, user.username);
+      set({ identities, primaryIdentity });
+    })
+    .catch((err) => debug.error('Failed to load identities:', err));
+  void syncAccountDisplayName(accountId, client);
+  resumeSettingsSync({ id: accountId, username: user.username, serverUrl });
+  notifySignedIn(get());
+}
+
+/** Sign-out of a server-held session: the URL that ends the provider's session too, if any. */
+async function endServerSession(): Promise<string | null> {
+  try {
+    const response = await apiFetch('/api/session', { method: 'DELETE' });
+    if (!response.ok) return null;
+    const { endSessionUrl } = (await response.json()) as { endSessionUrl: string | null };
+    return endSessionUrl;
+  } catch {
+    return null;
+  }
 }
 
 function navigateToLogin(): void {
@@ -2777,7 +2942,7 @@ export const useAuthStore = create<AuthState>()(
         // would cut the cleanup short. Awaiting it also means the provider's
         // logout URL is known before navigating, and nothing is left to
         // resume the session when the browser comes back.
-        const [endSessionUrl] = wasDemoMode ? [null] : await Promise.all([
+        const [endSessionUrl] = wasDemoMode ? [null] : state.authMode === 'session' ? [await endServerSession()] : await Promise.all([
           clearSlotCredentials(slot, wasOAuth, endProviderSession),
           ...droppedAccounts.map((dropped) => clearSlotCredentials(dropped.cookieSlot ?? 0, dropped.authMode === 'oauth')),
         ]);
@@ -3130,6 +3295,10 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkAuth: async () => {
+        if (!IS_LITE && (await fetchConfig().catch(() => null))?.serverSession) {
+          await restoreServerSession(set, get);
+          return;
+        }
         const accountStore = useAccountStore.getState();
         // An account on a server the device's OS policy refuses stays stored, with its
         // cookies and local data, and stays out of everything until it's allowed again.
@@ -3800,7 +3969,9 @@ export const useAuthStore = create<AuthState>()(
           if (!account) return null;
           try {
             if (session?.offlineOnly) throw new TransientAuthError('The main window is offline', 503);
-            const client = session
+            const client = session?.authMode === 'session'
+              ? JMAPClient.withServerSession(account.serverUrl, account.username, serverSessionEnded)
+              : session
               ? JMAPClient.withSharedAuth(account.serverUrl, account.username, session.authHeader, session.authMode === 'oauth'
                 ? () => get().refreshAccessToken({ accountId })
                 : undefined)

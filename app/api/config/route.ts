@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isServerSessionEnabled } from '@/lib/server-session/config';
 import { logger } from '@/lib/logger';
 import { configManager } from '@/lib/admin/config-manager';
 import { parseJmapServers, redactJmapServers } from '@/lib/admin/jmap-servers';
@@ -117,6 +118,7 @@ export async function GET(request: NextRequest) {
       // Error reporting (lib/error-reporting/client.ts): off unless a DSN is
       // set or this server counts errors. The DSN is public by design.
       errorReporting: await browserErrorSettings(),
+      serverSession: isServerSessionEnabled(),
     },
     {
       // Runtime settings can change without new asset URLs. Prevent stale

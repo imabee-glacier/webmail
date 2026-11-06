@@ -4,6 +4,7 @@ import { sessionCookieName } from '@/lib/auth/session-cookie';
 import { readStalwartAuthContextFromStore } from '@/lib/stalwart/auth-context';
 import { isTrustedJmapServerUrl } from '@/lib/stalwart/server-fetch';
 import { MAX_ACCOUNT_SLOTS } from '@/lib/account-utils';
+import { serverSessionCredentials } from '@/lib/server-session/credentials';
 
 export interface StalwartCredentials {
   /** URL of the JMAP server (used for JMAP + management method calls) */
@@ -42,6 +43,11 @@ function getCandidateSlots(request: NextRequest): number[] {
 }
 
 export async function getStalwartCredentials(request: NextRequest): Promise<StalwartCredentials | null> {
+  // A server-held sign-in is the only kind there is when one is configured:
+  // its token is current, renewed here, and never came from the page.
+  const held = await serverSessionCredentials(request);
+  if (held !== undefined) return held;
+
   const cookieStore = await cookies();
 
   for (const slot of getCandidateSlots(request)) {

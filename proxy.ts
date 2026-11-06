@@ -77,7 +77,7 @@ const PROXY_SKIP_PATTERN = /^\/(?:api|_next)(?:\/|$)/;
  * ended on a 404 (#1455).
  */
 export const config = {
-  matcher: ["/", "/((?!api/webdav$|api/plugin-proxy$|api/wopi/files/[^/]+/contents$).*)"],
+  matcher: ["/", "/((?!api/webdav$|api/plugin-proxy$|api/wopi/files/[^/]+/contents$|api/mail/jmap/upload/[^/]+/?$).*)"],
 };
 
 // What Next serves from public/: a single dotted segment at the root

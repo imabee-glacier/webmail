@@ -125,7 +125,11 @@ export type PayloadPurpose =
   /** Which server a desktop account's refresh token belongs to (lib/oauth/custom-upstream.ts). */
   | 'custom-upstream'
   /** Proof of an earlier session, for wiping a dropped account's plugin secrets (lib/plugin-secrets/wipe-proof.ts). */
-  | 'plugin-wipe-proof';
+  | 'plugin-wipe-proof'
+  /** A server-held sign-in at rest (lib/server-session/store.ts). */
+  | 'server-session'
+  /** State, nonce and PKCE verifier between /api/session/signin and its callback. */
+  | 'oidc-flow';
 
 /**
  * Whether a blob minted before purposes were bound may be re-admitted for
@@ -151,6 +155,8 @@ const LEGACY_PAYLOAD_MARKERS: Record<PayloadPurpose, (payload: Record<string, un
   'handoff-store': () => false,
   'custom-upstream': () => false,
   'plugin-wipe-proof': () => false,
+  'server-session': () => false,
+  'oidc-flow': () => false,
 };
 
 export function encryptPayload(payload: Record<string, unknown>, purpose: PayloadPurpose): string {

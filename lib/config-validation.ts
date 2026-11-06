@@ -77,6 +77,7 @@ const configValidators = {
   // Lite only (lib/lite-config.ts); the server's response leaves it out.
   oauthRevokeOnSignOut: (value): value is boolean | undefined => value === undefined || typeof value === 'boolean',
   // Absent from Lite's config and from servers before 1.20.
+  serverSession: (value): value is boolean | undefined => value === undefined || typeof value === 'boolean',
   errorReporting: (value): value is ConfigData['errorReporting'] => value === undefined || (
     isRecord(value)
     && typeof value.dsn === 'string'

@@ -64,6 +64,12 @@ export interface ConfigData {
   oauthRevokeOnSignOut?: boolean;
   /** Server build only; Lite reads it from policy.json (stores/policy-store.ts). */
   errorReporting?: ClientSettings;
+  /**
+   * Sign-in is server-held (lib/server-session): the mail server's own sign-in
+   * page, an httpOnly session cookie here, and JMAP through /api/mail. When
+   * set, it is the only way to sign in.
+   */
+  serverSession?: boolean;
 }
 
 interface AppConfig extends ConfigData {
@@ -219,6 +225,7 @@ export function useConfig(): AppConfig {
     easyReadUrl: configCache?.easyReadUrl || '',
     signLanguageUrl: configCache?.signLanguageUrl || '',
     noThirdPartyTraffic: configCache?.noThirdPartyTraffic ?? false,
+    serverSession: configCache?.serverSession ?? false,
     isLoading: !configCache,
     error: null,
   });
@@ -226,113 +233,14 @@ export function useConfig(): AppConfig {
   useEffect(() => {
     // If already cached, no need to fetch
     if (configCache) {
-      setConfig({
-        appName: configCache.appName,
-        jmapServerUrl: configCache.jmapServerUrl,
-        oauthEnabled: configCache.oauthEnabled,
-        oauthOnly: configCache.oauthOnly,
-        oauthPasswordFallbackEnabled: configCache.oauthPasswordFallbackEnabled,
-        oauthClientId: configCache.oauthClientId,
-        oauthIssuerUrl: configCache.oauthIssuerUrl,
-        oauthScopes: configCache.oauthScopes,
-        oauthResource: configCache.oauthResource,
-        rememberMeEnabled: configCache.rememberMeEnabled,
-        settingsSyncEnabled: configCache.settingsSyncEnabled,
-        stalwartFeaturesEnabled: configCache.stalwartFeaturesEnabled,
-        stalwartJmapPassthroughEnabled: configCache.stalwartJmapPassthroughEnabled,
-        devMode: configCache.devMode,
-        faviconUrl: configCache.faviconUrl,
-        appLogoLightUrl: configCache.appLogoLightUrl,
-        appLogoDarkUrl: configCache.appLogoDarkUrl,
-        loginLogoLightUrl: configCache.loginLogoLightUrl,
-        loginLogoDarkUrl: configCache.loginLogoDarkUrl,
-        loginCompanyName: configCache.loginCompanyName,
-        loginImprintUrl: configCache.loginImprintUrl,
-        loginPrivacyPolicyUrl: configCache.loginPrivacyPolicyUrl,
-        loginWebsiteUrl: configCache.loginWebsiteUrl,
-        loginUsernamePlaceholder: configCache.loginUsernamePlaceholder,
-        loginLogoMaxHeight: configCache.loginLogoMaxHeight,
-        loginLogoMaxWidth: configCache.loginLogoMaxWidth,
-        loginShowHeading: configCache.loginShowHeading,
-        loginShowSubtitle: configCache.loginShowSubtitle,
-        loginShowTotp: configCache.loginShowTotp,
-        loginShowTokenLogin: configCache.loginShowTokenLogin,
-        desktopBrowserSignIn: configCache.desktopBrowserSignIn,
-        loginShowRememberMe: configCache.loginShowRememberMe,
-        loginShowVersion: configCache.loginShowVersion,
-        demoMode: configCache.demoMode,
-        autoSsoEnabled: configCache.autoSsoEnabled,
-        allowCustomJmapEndpoint: configCache.allowCustomJmapEndpoint,
-        jmapServers: configCache.jmapServers || [],
-        jmapServerAutoPickByDomain: configCache.jmapServerAutoPickByDomain || false,
-        embeddedMode: configCache.embeddedMode,
-        parentOrigin: configCache.parentOrigin,
-        sourceCodeUrl: configCache.sourceCodeUrl,
-        accessibilityStatementUrl: configCache.accessibilityStatementUrl,
-        accessibilityFeedbackUrl: configCache.accessibilityFeedbackUrl,
-        helpUrl: configCache.helpUrl,
-        easyReadUrl: configCache.easyReadUrl,
-        signLanguageUrl: configCache.signLanguageUrl,
-        noThirdPartyTraffic: configCache.noThirdPartyTraffic,
-        isLoading: false,
-        error: null,
-      });
+      const cached = configCache;
+      setConfig({ ...cached, jmapServers: cached.jmapServers || [], jmapServerAutoPickByDomain: cached.jmapServerAutoPickByDomain || false, isLoading: false, error: null });
       return;
     }
 
     fetchConfig()
       .then((data) => {
-        setConfig({
-          appName: data.appName,
-          jmapServerUrl: data.jmapServerUrl,
-          oauthEnabled: data.oauthEnabled,
-          oauthOnly: data.oauthOnly,
-          oauthPasswordFallbackEnabled: data.oauthPasswordFallbackEnabled,
-          oauthClientId: data.oauthClientId,
-          oauthIssuerUrl: data.oauthIssuerUrl,
-          oauthScopes: data.oauthScopes,
-          oauthResource: data.oauthResource,
-          rememberMeEnabled: data.rememberMeEnabled,
-          settingsSyncEnabled: data.settingsSyncEnabled,
-          stalwartFeaturesEnabled: data.stalwartFeaturesEnabled,
-          stalwartJmapPassthroughEnabled: data.stalwartJmapPassthroughEnabled,
-          devMode: data.devMode,
-          faviconUrl: data.faviconUrl,
-          appLogoLightUrl: data.appLogoLightUrl,
-          appLogoDarkUrl: data.appLogoDarkUrl,
-          loginLogoLightUrl: data.loginLogoLightUrl,
-          loginLogoDarkUrl: data.loginLogoDarkUrl,
-          loginCompanyName: data.loginCompanyName,
-          loginImprintUrl: data.loginImprintUrl,
-          loginPrivacyPolicyUrl: data.loginPrivacyPolicyUrl,
-          loginWebsiteUrl: data.loginWebsiteUrl,
-          loginUsernamePlaceholder: data.loginUsernamePlaceholder,
-          loginLogoMaxHeight: data.loginLogoMaxHeight,
-          loginLogoMaxWidth: data.loginLogoMaxWidth,
-          loginShowHeading: data.loginShowHeading,
-          loginShowSubtitle: data.loginShowSubtitle,
-          loginShowTotp: data.loginShowTotp,
-          loginShowTokenLogin: data.loginShowTokenLogin,
-          desktopBrowserSignIn: data.desktopBrowserSignIn,
-          loginShowRememberMe: data.loginShowRememberMe,
-          loginShowVersion: data.loginShowVersion,
-          demoMode: data.demoMode,
-          autoSsoEnabled: data.autoSsoEnabled,
-          allowCustomJmapEndpoint: data.allowCustomJmapEndpoint,
-          jmapServers: data.jmapServers || [],
-          jmapServerAutoPickByDomain: data.jmapServerAutoPickByDomain || false,
-          embeddedMode: data.embeddedMode,
-          parentOrigin: data.parentOrigin,
-          sourceCodeUrl: data.sourceCodeUrl,
-          accessibilityStatementUrl: data.accessibilityStatementUrl,
-          accessibilityFeedbackUrl: data.accessibilityFeedbackUrl,
-          helpUrl: data.helpUrl,
-          easyReadUrl: data.easyReadUrl,
-          signLanguageUrl: data.signLanguageUrl,
-          noThirdPartyTraffic: data.noThirdPartyTraffic,
-          isLoading: false,
-          error: null,
-        });
+        setConfig({ ...data, jmapServers: data.jmapServers || [], jmapServerAutoPickByDomain: data.jmapServerAutoPickByDomain || false, isLoading: false, error: null });
       })
       .catch((err) => {
         setConfig((prev) => ({

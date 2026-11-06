@@ -38,7 +38,7 @@ export interface AccountEntry {
    * Authentication mode: a password (Basic), OAuth/SSO tokens that renew, or
    * an access token the user pasted (Bearer, no renewal).
    */
-  authMode: 'basic' | 'oauth' | 'token';
+  authMode: 'basic' | 'oauth' | 'token' | 'session';
   /** Cookie slot index for session/token cookies (0 ≤ slot < MAX_ACCOUNT_SLOTS) */
   cookieSlot: number;
   /** Whether "Remember Me" was checked (password and access-token logins) */

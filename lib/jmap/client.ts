@@ -1624,8 +1624,14 @@ export class JMAPClient implements IJMAPClient {
   private password: string;
   private basePassword: string = '';
   private authHeader: string;
-  private authMode: 'basic' | 'bearer' = 'basic';
+  /**
+   * 'session': a server-held sign-in. Requests go to this app's own origin,
+   * which adds the credentials itself; the page holds none. A 401 there means
+   * the sign-in is over (the server already renewed and retried).
+   */
+  private authMode: 'basic' | 'bearer' | 'session' = 'basic';
   private onTokenRefresh?: () => Promise<string | null>;
+  private onSessionEnded?: () => void;
   /** When the server last answered a request without 401 (epoch ms). */
   private authAcceptedAt = 0;
   private onTotpRequired?: () => Promise<string | null>;
@@ -1727,6 +1733,24 @@ export class JMAPClient implements IJMAPClient {
   /** The session resource, for offline mode to keep (it names the accounts and URLs, no credentials). */
   getSessionSnapshot(): unknown {
     return this.session;
+  }
+
+  /** A client for a server-held sign-in: `serverUrl` is this app's /api/mail. */
+  static withServerSession(serverUrl: string, username: string, onSessionEnded: () => void): JMAPClient {
+    const client = new JMAPClient(serverUrl, username, '');
+    client.authMode = 'session';
+    client.authHeader = '';
+    client.onSessionEnded = onSessionEnded;
+    return client;
+  }
+
+  isServerSession(): boolean {
+    return this.authMode === 'session';
+  }
+
+  /** The Authorization header to send, or none for a server-held sign-in. */
+  private authHeaders(): Record<string, string> {
+    return this.authMode === 'session' ? {} : { Authorization: this.authHeader };
   }
 
   static withBearer(
@@ -1940,7 +1964,7 @@ export class JMAPClient implements IJMAPClient {
     }
 
     const timeoutMs = opts?.timeoutMs ?? JMAPClient.REQUEST_TIMEOUT_MS;
-    const headers = { ...init?.headers as Record<string, string>, 'Authorization': this.authHeader };
+    const headers = { ...init?.headers as Record<string, string>, ...this.authHeaders() };
     let response: Response;
 
     try {
@@ -1981,7 +2005,7 @@ export class JMAPClient implements IJMAPClient {
         const newToken = await this.onTokenRefresh();
         if (newToken) {
           this.updateAccessToken(newToken);
-          const retryHeaders = { ...init?.headers as Record<string, string>, 'Authorization': this.authHeader };
+          const retryHeaders = { ...init?.headers as Record<string, string>, ...this.authHeaders() };
           response = await this.timedFetch(url, init, retryHeaders, timeoutMs);
           // A token issued just now was refused. No new token says nothing:
           // the renewal has its own rules for that.
@@ -1990,13 +2014,18 @@ export class JMAPClient implements IJMAPClient {
       } else if (this.authMode === 'bearer') {
         // A pasted token: there's nothing to renew it with.
         reauthRefused = true;
+      } else if (this.authMode === 'session') {
+        // The server renewed and retried before answering 401: the sign-in is over.
+        this.stopKeepAlive();
+        this.closePushNotifications();
+        this.onSessionEnded?.();
       } else if (this.authMode === 'basic' && !this.reconnecting && url !== this.discoveryUrl()) {
         // JMAP session may have expired - re-establish and retry once
         this.reconnecting = true;
         try {
           await this.refreshSession();
           this.connectionChangeCallback?.(true);
-          const retryHeaders = { ...init?.headers as Record<string, string>, 'Authorization': this.authHeader };
+          const retryHeaders = { ...init?.headers as Record<string, string>, ...this.authHeaders() };
           response = await this.timedFetch(url, init, retryHeaders, timeoutMs);
           reauthRefused = true;
         } catch (refreshError) {
@@ -2011,7 +2040,7 @@ export class JMAPClient implements IJMAPClient {
                 this.updateBasicAuth(`${this.basePassword}$${newTotp}`);
                 await this.refreshSession();
                 this.connectionChangeCallback?.(true);
-                const retryHeaders = { ...init?.headers as Record<string, string>, 'Authorization': this.authHeader };
+                const retryHeaders = { ...init?.headers as Record<string, string>, ...this.authHeaders() };
                 response = await this.timedFetch(url, init, retryHeaders, timeoutMs);
               }
             } catch {
@@ -2094,7 +2123,7 @@ export class JMAPClient implements IJMAPClient {
       return fetch(response.url, withJmapCredentials({
         method: 'GET',
         cache: 'no-store',
-        headers: { 'Authorization': this.authHeader },
+        headers: this.authHeaders(),
       }));
     }
     if (!response.ok || !response.redirected) return response;
@@ -2107,7 +2136,7 @@ export class JMAPClient implements IJMAPClient {
     return fetch(response.url, withJmapCredentials({
       method: 'GET',
       cache: 'no-store',
-      headers: { 'Authorization': this.authHeader },
+      headers: this.authHeaders(),
     }));
   }
 
@@ -2139,7 +2168,9 @@ export class JMAPClient implements IJMAPClient {
         if (sessionResponse.status === 401) {
           // A token's refusal was counted on the way here, if it counts at all.
           if (this.authMode === 'basic' && !sessionResponse.redirected) await this.noteCredentialsRefused(sessionResponse);
-          throw new Error(this.authMode === 'bearer'
+          throw new Error(this.authMode === 'session'
+            ? 'Session ended'
+            : this.authMode === 'bearer'
             ? 'Authentication failed - token may be expired'
             : 'Invalid username or password');
         }
@@ -6476,7 +6507,7 @@ export class JMAPClient implements IJMAPClient {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url, true);
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.setRequestHeader('Authorization', this.authHeader);
+      if (this.authMode !== 'session') xhr.setRequestHeader('Authorization', this.authHeader);
       xhr.responseType = 'text';
 
       let settled = false;
@@ -6828,7 +6859,7 @@ export class JMAPClient implements IJMAPClient {
    */
   async fetchBlobForTransfer(blobId: string, accountId: string | undefined, signal?: AbortSignal): Promise<Uint8Array> {
     const url = this.getBlobDownloadUrl(blobId, 'message.eml', 'message/rfc822', accountId);
-    const response = await this.timedFetch(url, { signal }, { Authorization: this.authHeader }, JMAPClient.TRANSFER_TIMEOUT_MS);
+    const response = await this.timedFetch(url, { signal }, this.authHeaders(), JMAPClient.TRANSFER_TIMEOUT_MS);
     if (response.status === 401) {
       return new Uint8Array(await (await this.fetchBlob(blobId, 'message.eml', 'message/rfc822', accountId)).arrayBuffer());
     }

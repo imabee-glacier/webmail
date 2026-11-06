@@ -160,7 +160,7 @@ const nextConfig: NextConfig = {
             },
             // The upload routes proxy.ts's matcher leaves out, with the
             // headers it sets on every other API response.
-            ...["/api/webdav", "/api/plugin-proxy", "/api/wopi/files/:fileId/contents"].map((source) => ({
+            ...["/api/webdav", "/api/plugin-proxy", "/api/wopi/files/:fileId/contents", "/api/mail/jmap/upload/:accountId"].map((source) => ({
               source,
               headers: [
                 { key: "X-Content-Type-Options", value: "nosniff" },

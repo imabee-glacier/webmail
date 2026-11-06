@@ -24,6 +24,12 @@ export interface AllowedState {
 }
 
 export const SERVER_STATE_ALLOWLIST: AllowedState[] = [
+  { site: 'lib/server-session/config.ts#cached', class: 'per-process', why: 'parsed OIDC_* / SESSION_* env' },
+  { site: 'lib/server-session/oidc.ts#discoveryCache', class: 'cache', why: 'the provider\'s discovery document, 1 h' },
+  { site: 'lib/server-session/oidc.ts#jwksCache', class: 'cache', why: 'the provider\'s signing keys; an unknown kid refetches, at most once a minute' },
+  { site: 'lib/server-session/session.ts#sweeper', class: 'per-process', why: 'this process\'s hourly sweep of expired session files' },
+  { site: 'lib/server-session/session.ts#inFlight', class: 'per-process', why: 'one refresh per session at a time in this process; server-held sessions run as a single replica (the session files are on its volume)' },
+  { site: 'lib/server-session/store.ts#ensured', class: 'per-process', why: 'whether this process created the sessions directory' },
   { site: 'app/api/admin/auth/route.ts#adminCheckCache', class: 'cache', why: 'Stalwart superuser probe, 60 s per entry, capped at 1000' },
   { site: 'app/api/dev-jmap/[...path]/route.ts#scheduledSubmissions', class: 'per-process', why: 'dev mock JMAP server, removed from the Docker build' },
   { site: 'app/api/dev-jmap/[...path]/route.ts#emailCreationIds', class: 'per-process', why: 'dev mock JMAP server' },

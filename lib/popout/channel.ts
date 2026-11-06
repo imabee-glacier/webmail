@@ -25,7 +25,8 @@ export interface SharedAccountSession {
   accountId: string;
   serverUrl: string;
   username: string;
-  authMode: 'basic' | 'token' | 'oauth';
+  authMode: 'basic' | 'token' | 'oauth' | 'session';
+  /** Empty for a server-held session: this origin's cookie is the credential. */
   authHeader: string;
   /** The window started offline: it has no credential to share (#523). */
   offlineOnly?: boolean;

@@ -90,8 +90,8 @@ COPY --from=builder /app/scripts/healthcheck.mjs ./healthcheck.mjs
 # writable. plugin-secrets holds users' plugin credentials, version-check the
 # result of the last update check.
 RUN mkdir -p /app/.next/cache /app/data/settings /app/data/admin /app/data/admin-state \
-      /app/data/telemetry /app/data/plugin-secrets /app/data/version-check && \
-    chmod 700 /app/data/plugin-secrets && \
+      /app/data/telemetry /app/data/plugin-secrets /app/data/version-check /app/data/sessions && \
+    chmod 700 /app/data/plugin-secrets /app/data/sessions && \
     chown -R nextjs:nodejs /app/.next/cache /app/data
 USER nextjs
 EXPOSE 3000

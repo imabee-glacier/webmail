@@ -1,6 +1,23 @@
 {
   "meta_description": "Saját üzemeltetésű webmail levelezéshez, naptárhoz, névjegyekhez és fájlokhoz, JMAP alapokon",
   "login": {
+    "server_signin": {
+      "title": "Sign in - {app}",
+      "redirecting_title": "Taking you to sign in",
+      "redirecting_body": "You'll sign in with your passkey on your mail server's secure page.",
+      "continue": "Continue to sign in",
+      "other_account": "Use another account",
+      "signed_out_title": "You're signed out",
+      "signed_out_body": "Sign in again to get back to {app}.",
+      "error_cancelled_title": "Sign-in was cancelled",
+      "error_cancelled_body": "Nothing was changed. You can try again whenever you're ready.",
+      "error_expired_title": "That sign-in took too long",
+      "error_expired_body": "For your security, sign-in links only work for a few minutes and only once. Start again.",
+      "error_unavailable_title": "Can't reach the sign-in service",
+      "error_unavailable_body": "Your mail server isn't answering right now. Check your connection and try again in a moment.",
+      "error_failed_title": "Sign-in didn't complete",
+      "error_failed_body": "Something went wrong while confirming your sign-in. Try again; if it keeps happening, contact your administrator."
+    },
     "title": "Webmail",
     "username_label": "E-mail",
     "username_placeholder": "user@example.com",

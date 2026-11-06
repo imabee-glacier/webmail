@@ -24,6 +24,7 @@ import { useThemeStore } from "@/stores/theme-store";
 import { usePolicyStore } from "@/stores/policy-store";
 import { useShallow } from "zustand/react/shallow";
 import { useConfig } from "@/hooks/use-config";
+import { ServerSignIn } from "@/components/auth/server-sign-in";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiFetch, getPathPrefix, toRouterPath, withBasePath } from "@/lib/browser-navigation";
 import { cn } from "@/lib/utils";
@@ -2461,7 +2462,16 @@ export default function LoginPage() {
   const t = useTranslations("login");
   return (
     <Suspense fallback={<LoginSkeleton label={t("loading")} />}>
-      <LoginPageContent />
+      <LoginRoute />
     </Suspense>
   );
+}
+
+/**
+ * Until the config is known the regular page draws its own skeleton, as the
+ * server rendered it; with server-held sign-in there is no form to draw.
+ */
+function LoginRoute() {
+  const { serverSession, isLoading } = useConfig();
+  return !isLoading && serverSession ? <ServerSignIn /> : <LoginPageContent />;
 }
